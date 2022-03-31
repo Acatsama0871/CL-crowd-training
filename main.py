@@ -3,34 +3,33 @@
 
 # dependencies
 import os
-import sys
-import zipfile
-import time
+import uuid
+import glob
 import pickle
 import random
-import datetime
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import jsonlines
 from math import ceil
 from torch.autograd import Variable
-from torch.nn import BCEWithLogitsLoss, BCELoss
-from torch.utils.data import TensorDataset, random_split, DataLoader, RandomSampler, SequentialSampler
-from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForSequenceClassification
-from sklearn.model_selection import train_test_split, StratifiedKFold
-from sklearn.utils import shuffle
-from torchinfo import summary
+from torch.autograd import Variable
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 
 # set up path
 cwd = os.getcwd()
 data_path = os.path.join(cwd, 'aug_data')
+train_path = os.path.join(cwd, 'train_data')
+valid_path = os.path.join(cwd, 'valid_data')
+total_path = os.path.join(cwd, 'total_data')
 
 # TODO: download aug data
+# TODO: package
 
 
 # set up device
@@ -994,3 +993,483 @@ def train_crowd_job():
                     n_epochs=n_epochs)
         print('Crowd Training Finished')
         print('-' * 30)
+
+
+# Evaluation functions
+# location finder
+class LocationFinder:
+    def __init__(self, embedding_data):
+        self.embedding_data = embedding_data
+    
+    def find_one(self, vec):
+        for i in range(self.embedding_data.shape[0]):
+            cur_array = self.embedding_data[i]
+            if np.all(cur_array == vec):
+                return i
+    
+    def find_locations(self, vec):
+        result = []
+        for i in range(vec.shape[0]):
+            cur_array = vec[i]
+            result.append(self.find_one(cur_array))
+        
+        return result
+
+# sample data class
+class DataSampler:
+    def __init__(self, embedding_data, aug_data, X_train_pos, X_train_neg, X_val_pos, X_val_neg):
+        self.embedding_data = [embedding_data]
+        self.aug_data = [aug_data]
+        self.X_train_pos = X_train_pos
+        self.X_train_neg = X_train_neg
+        self.X_val_pos = X_val_pos
+        self.X_val_neg = X_val_neg
+
+    
+    def sample_one_batch(self, col_name, sample_size, k_shot=5):
+        ret_support_data = []
+        ret_query_data_x = []
+        ret_query_data_y = []
+        ret_alpha = []
+        ret_aug_type = []
+        ret_support_ids = []
+        ret_query_ids = []
+
+        # construct data loader & generator
+        loader = CL_Data_loader(X_train_pos=self.X_train_pos[col_name], 
+                            X_train_neg=self.X_train_neg[col_name],
+                            X_val_pos=self.X_val_pos[col_name], 
+                            X_val_neg=self.X_val_neg[col_name],
+                            data=self.embedding_data,
+                            aug_data=self.aug_data,
+                            batch_size=1,
+                            k_shot=k_shot,
+                            train_mode = True)
+        for _ in range(sample_size):
+            # random sample alpha & aug_type
+            cur_alpha = random.randint(0,5)
+            cur_aug_type = random.randint(1, 4)
+            ret_alpha.append(cur_alpha)
+            ret_aug_type.append(cur_aug_type)
+            # sample data
+            cur_support_data, cur_query_data_x, cur_query_data_y, cur_support_ids, cur_query_ids = loader.next_batch(alpha=cur_alpha, aug_type=cur_aug_type, return_sample_ids=True)  # FIXME: Get id from .next_batch() function
+            cur_support_data = cur_support_data[0].numpy()
+            cur_support_data = cur_support_data.reshape(1, -1, 100, 768)  # hard-coded sentence embedding shape
+            cur_query_data_x = cur_query_data_x[0].numpy()
+            cur_query_data_y = cur_query_data_y.numpy()
+            # append
+            ret_support_data.append(cur_support_data)
+            ret_query_data_x.append(cur_query_data_x)
+            ret_query_data_y.append(cur_query_data_y)
+            ret_support_ids.append(cur_support_ids[0])
+            ret_query_ids.append(cur_query_ids[0])
+        
+        # concat
+        ret_support_data = np.concatenate(ret_support_data)
+        ret_query_data_x = np.concatenate(ret_query_data_x)
+        ret_query_data_y = np.concatenate(ret_query_data_y)
+
+        return ret_support_data, ret_query_data_x, ret_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids
+
+    def sample_one_batch_valid(self, col_name, sample_size, k_shot=5):
+        ret_support_data = []
+        ret_query_data_x = []
+        ret_query_data_y = []
+        ret_alpha = []
+        ret_aug_type = []
+        ret_support_ids = []
+        ret_query_ids = []
+
+        # construct data loader & generator
+        loader = CL_Data_loader(X_train_pos=self.X_train_pos[col_name],
+                                X_train_neg=self.X_train_neg[col_name],
+                                X_val_pos=self.X_val_pos[col_name],
+                                X_val_neg=self.X_val_neg[col_name],
+                                data=self.embedding_data,
+                                aug_data=self.aug_data,
+                                batch_size=1,
+                                k_shot=k_shot,
+                                train_mode = False)
+        loader_gen = loader.next_eval_batch_gen(return_sample_ids=True)
+        for _ in range(sample_size):
+            # random sample alpha & aug_type
+            cur_alpha = 0
+            cur_aug_type = 0
+            ret_alpha.append(cur_alpha)
+            ret_aug_type.append(cur_aug_type)
+            # sample data
+            cur_support_data, cur_query_data_x, cur_query_data_y, cur_support_ids, cur_query_ids = next(loader_gen)
+            cur_support_data = cur_support_data[0].numpy()
+            cur_support_data = cur_support_data.reshape(1, -1, 100, 768)  # hard-coded sentence embedding shape
+            cur_query_data_x = cur_query_data_x[0].numpy()
+            cur_query_data_y = cur_query_data_y.numpy()
+            # append
+            ret_support_data.append(cur_support_data)
+            ret_query_data_x.append(cur_query_data_x)
+            ret_query_data_y.append(cur_query_data_y)
+            ret_support_ids.append(cur_support_ids[0])
+            ret_query_ids.append(cur_query_ids[0])
+
+        # concat
+        ret_support_data = np.concatenate(ret_support_data)
+        ret_query_data_x = np.concatenate(ret_query_data_x)
+        ret_query_data_y = np.concatenate(ret_query_data_y)
+
+        return ret_support_data, ret_query_data_x, ret_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids
+
+# split small
+class split_small(Dataset):
+    def __init__(self, cur_support_data, cur_query_data_x, cur_query_data_y):
+        self.cur_support_data = cur_support_data
+        self.cur_query_data_x = cur_query_data_x
+        self.cur_query_data_y = cur_query_data_y
+    
+    def __getitem__(self, index):
+        return self.cur_support_data[index], self.cur_query_data_x[index], self.cur_query_data_y[index]
+    
+    def __len__(self):
+        return self.cur_query_data_y.shape[0]
+
+# given data evaluation
+def given_data_evaluation(cur_support_data, cur_query_data_x, cur_query_data_y, model, k_shot=5):
+    # result
+    judgemet = []
+    temp_dataset = split_small(cur_support_data, cur_query_data_x, cur_query_data_y)
+    temp_dataloader = DataLoader(temp_dataset, batch_size=128, shuffle=False)
+    
+    for cur_x_support_temp, cur_x_query_temp, cur_y_query_temp in temp_dataloader:
+        x_support, x_query, y_query = data_converter(support_data=cur_x_support_temp.numpy(),
+                                                              query_data_x=cur_x_query_temp.numpy(),
+                                                              query_data_y=cur_y_query_temp.numpy(),
+                                                              n_shot=k_shot)
+        # move to device
+        x_support = x_support.to(device)
+        x_query = x_query.to(device)
+        y_query = y_query.to(device)
+        # predict label
+        yhat, _, _ = model.evaluation(x_support, x_query, y_query)
+        # reshape
+        yhat = yhat.long().cpu().numpy().reshape(-1)
+        y = y_query.long().cpu().numpy().reshape(-1)
+        # check if prediction is correct
+        cur_judgemet = np.where(yhat == y, 1, 0)
+        judgemet.append(cur_judgemet)
+
+    return np.concatenate(judgemet)
+
+
+# Evaluation jobs
+# train evaluation job
+def train_evaluation_job():
+    print('Train Evaluation Job Started')
+    # set up parameters
+    # sample_question_size = 35_000
+    sample_question_size = 10  # FIXME
+    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
+    col_names = ['Country']  # FIXME
+    # chunk_size = 5000
+    chunk_size = 10  # FIXME
+    num_chunks = ceil(sample_question_size / chunk_size)
+    # set up path
+    crowd_base_path = os.path.join(cwd, 'crowd')
+    task_info_path = os.path.join(cwd, 'train_data', 'task')
+    model_judgement_path = os.path.join(cwd, 'train_data', 'model_judgement')
+    # initialize
+    mySampler = DataSampler(embedding_data=token_embeddings, 
+                            aug_data=aug_token_embeddings,
+                            X_train_pos=train_pos_positions, 
+                            X_train_neg=train_neg_positions, 
+                            X_val_pos=valid_pos_positions, 
+                            X_val_neg=valid_neg_positions)
+    # chunk evaluation
+    for cur_col in col_names:
+        print(f'{cur_col} started\n')
+        for j in tqdm(range(num_chunks)):
+            # sample data
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=chunk_size)  # FIXME: call the sampler function
+            # print('Sample Finished')
+            # construct the task information
+            cur_query_locs = ret_query_ids
+            cur_support_pos_locs = []
+            cur_support_neg_locs = []
+            for i in range(len(ret_support_ids)):
+                loc_temp = ret_support_ids[i]
+                cur_support_pos_locs.append(loc_temp[5:])
+                cur_support_neg_locs.append(loc_temp[:5])
+            ids = [str(uuid.uuid4()) for _ in range(len(cur_query_locs))]
+            cur_record = {'ID': ids,
+                        'Pos_support_locs': cur_support_pos_locs,
+                        'Neg_support_locs': cur_support_neg_locs,
+                        'Query_loc': cur_query_locs,
+                        'Label': cur_query_data_y,
+                        'Alpha': ret_alpha,
+                        'Aug_type': ret_aug_type}
+            pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
+
+            # models path
+            models_path_long = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.pth')))
+            models_path = [os.path.basename(f) for f in models_path_long]
+            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.csv')))
+            model_info_csv = model_info_csv[0]
+            model_info_csv = pd.read_csv(model_info_csv, index_col=0)
+            filters_dict = {}
+            for _, cur_row in model_info_csv.iterrows():
+                filters_dict[cur_row['CrowdID']] = cur_row['NumFilters']
+            for cur_path in tqdm(models_path):
+                # print(f'Model {cur_path} started')
+                # load model
+                cnn_lstm = Base_CNN(emb_dim=768, num_filter=filters_dict[int(cur_path.split('.')[0])], kernel_sizes=[1, 3, 5])
+                prto_model = Protonet(cnn_lstm).to(device)
+                prto_model.load_state_dict(torch.load(os.path.join(crowd_base_path, cur_col, cur_path)))
+                prto_model.eval()
+                # evaluation
+                judgement = given_data_evaluation(cur_support_data, cur_query_data_x, cur_query_data_y, prto_model)
+                if not os.path.isdir(os.path.join(model_judgement_path, cur_col)):
+                    os.mkdir(os.path.join(model_judgement_path, cur_col))
+                pd.DataFrame({'ID': ids, 'Judgement': judgement}).to_csv(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + f'_c_{j}' + '.csv'), index=False)
+    
+    # merge chunk
+    for cur_col in col_names:
+        # combine task
+        temp_list = []
+        file_chunks = os.listdir(os.path.join(task_info_path, 'chuncks', cur_col))
+        for cur_file in tqdm(file_chunks):
+            temp_list.append(pd.read_csv(os.path.join(task_info_path, 'chuncks', cur_col, cur_file)))
+        temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
+        temp_combined = temp_combined.sort_values(by='ID').reset_index()
+        del temp_combined['index']
+        # check duplicates
+        duplicates_check_df = temp_combined.loc[:, temp_combined.columns != 'ID'].copy()
+        duplicates_boolean = duplicates_check_df.duplicated(subset=None, keep='first').tolist()
+        print(f'Class :{cur_col}, num of duplicates: {np.sum(duplicates_boolean)}')
+        duplicates_boolean = [not item for item in duplicates_boolean]  # flip the boolean to index dataframe
+        # remove duplicates from combined and save
+        temp_combined = temp_combined[duplicates_boolean].reset_index()
+        del temp_combined['index']
+        temp_combined.to_csv(os.path.join(task_info_path, cur_col + '.csv'), index=False)
+        # combine model judgement
+        model_judgement_chunk_path = os.path.join(model_judgement_path, cur_col, 'chunk')
+        models_path = os.listdir(os.path.join(crowd_base_path, cur_col))
+        for cur_path in models_path:
+            # combine
+            temp_list = []
+            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_?.csv')):
+                temp_list.append(pd.read_csv(cur_file))
+            temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
+            temp_combined = temp_combined.sort_values(by='ID').reset_index()
+            del temp_combined['index']
+            # remove duplicated lines
+            temp_combined = temp_combined[duplicates_boolean].reset_index()
+            del temp_combined['index']
+            # save
+            temp_combined.to_csv(os.path.join(os.path.join(model_judgement_path, cur_col, cur_path + '.csv')), index=False)
+    print("Train Evaluation Finished")
+    print('-' * 30)
+
+# valid evaluation job
+def valid_evaluation_job():
+    print('Valid Evaluation Started')
+    # set up parameters
+    # sample_question_size = 15_000
+    sample_question_size = 10 # FIXME
+    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
+    col_names = ['Country'] # FIXME
+    # chunk_size = 5000
+    chunk_size = 10  # FIXME
+    num_chunks = ceil(sample_question_size / chunk_size)
+    # set up path
+    crowd_base_path = os.path.join(cwd, 'crowd')
+    task_info_path = os.path.join(cwd, 'valid_data', 'task')
+    model_judgement_path = os.path.join(cwd, 'valid_data', 'model_judgement')
+    # initialize
+    mySampler = DataSampler(embedding_data=token_embeddings,
+                            aug_data=aug_token_embeddings,
+                            X_train_pos=train_pos_positions,
+                            X_train_neg=train_neg_positions,
+                            X_val_pos=valid_pos_positions,
+                            X_val_neg=valid_neg_positions)
+    # chunk evaluation
+    # evaluation
+    for cur_col in col_names:
+        print(f'{cur_col} started\n')
+        for j in tqdm(range(num_chunks)):
+            # sample data
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=chunk_size)  # FIXME: call the sampler function
+            # print('Sample Finished')
+            # construct the task information
+            cur_query_locs = ret_query_ids
+            cur_support_pos_locs = []
+            cur_support_neg_locs = []
+            for i in range(len(ret_support_ids)):
+                loc_temp = ret_support_ids[i]
+                cur_support_pos_locs.append(loc_temp[5:])  # FIXME: Positive Label later
+                cur_support_neg_locs.append(loc_temp[:5])  # FIXME: Negative label first
+            ids = [str(uuid.uuid4()) for _ in range(len(cur_query_locs))]
+            cur_record = {'ID': ids,
+                        'Pos_support_locs': cur_support_pos_locs,
+                        'Neg_support_locs': cur_support_neg_locs,
+                        'Query_loc': cur_query_locs,
+                        'Label': cur_query_data_y,
+                        'Alpha': ret_alpha,
+                        'Aug_type': ret_aug_type}
+            pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
+
+            # models path
+            models_path_long = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.pth')))
+            models_path = [os.path.basename(f) for f in models_path_long]
+            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.csv')))
+            model_info_csv = model_info_csv[0]
+            model_info_csv = pd.read_csv(model_info_csv, index_col=0)
+            filters_dict = {}
+            for _, cur_row in model_info_csv.iterrows():
+                filters_dict[cur_row['CrowdID']] = cur_row['NumFilters']
+            for cur_path in tqdm(models_path):
+                # print(f'Model {cur_path} started')
+                # load model
+                cnn_lstm = Base_CNN(emb_dim=768, num_filter=filters_dict[int(cur_path.split('.')[0])], kernel_sizes=[1, 3, 5])
+                prto_model = Protonet(cnn_lstm).to(device)
+                prto_model.load_state_dict(torch.load(os.path.join(crowd_base_path, cur_col, cur_path)))
+                prto_model.eval()
+                # evaluation
+                judgement = given_data_evaluation(cur_support_data, cur_query_data_x, cur_query_data_y, prto_model)
+                if not os.path.isdir(os.path.join(model_judgement_path, cur_col)):
+                    os.mkdir(os.path.join(model_judgement_path, cur_col))
+                pd.DataFrame({'ID': ids, 'Judgement': judgement}).to_csv(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + f'_c_{j}' + '.csv'), index=False)
+    print('Valid Evaluation Finished')
+    print('-' * 30)
+
+# evaluation job
+def evaluation_job():
+    print("Evaluation Started")
+    train_evaluation_job()
+    valid_evaluation_job()
+    print("Evaluation Finished")
+    print('-' * 30)
+
+
+# generate the jsonlines file
+# train valid ID job
+def train_valid_ID_job():
+    print('Train Valid ID Job Started')
+    # save train & valid task id
+    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
+    col_names = ['Country']  # FIXME
+    # train
+    train_task_id = {}
+    for cur_col in col_names:
+        cur_task_df = pd.read_csv(os.path.join(train_path, 'task', cur_col + '.csv'))
+        cur_task_ids = cur_task_df['ID'].tolist()
+        train_task_id[cur_col] = cur_task_ids
+    # save
+    with open(os.path.join(total_path, 'train_task_id.pkl'), 'wb') as f:
+        pickle.dump(train_task_id, f)
+    # valid
+    valid_task_id = {}
+    for cur_col in col_names:
+        cur_task_df = pd.read_csv(os.path.join(valid_path, 'task', cur_col + '.csv'))
+        cur_task_ids = cur_task_df['ID'].tolist()
+        valid_task_id[cur_col] = cur_task_ids
+    # save
+    with open(os.path.join(total_path, 'valid_task_id.pkl'), 'wb') as f:
+        pickle.dump(valid_task_id, f)
+
+    # sanity check
+    for cur_col in col_names:
+        print(cur_col)
+        print(set(train_task_id[cur_col]).intersection(set(valid_task_id[cur_col])))
+    print('Train Valid ID Job Finished')
+    print('-' * 30)
+
+def merging_job():
+    print('Merging Started')
+    # merge task
+    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
+    col_names = ['Country']  # FIXME
+    for cur_col in col_names:
+        train_task_df = pd.read_csv(os.path.join(train_path, 'task', cur_col + '.csv'))
+        train_task_df['Train'] = True
+        valid_task_df = pd.read_csv(os.path.join(valid_path, 'task', cur_col + '.csv'))
+        valid_task_df['Train'] = False
+        total_task_df = pd.concat([train_task_df, valid_task_df], axis=0, ignore_index=True)
+        total_task_df.to_csv(os.path.join(total_path, 'task', cur_col + '.csv'), index=False)
+
+    # merge model_judgement
+    for cur_col in col_names:
+        print(cur_col, 'started')
+        train_judgement_files = os.listdir(os.path.join(train_path, 'model_judgement', cur_col))
+        train_judgement_files = [i for i in train_judgement_files if i != 'chunk']
+        for cur_file in tqdm(train_judgement_files):
+            cur_train_df = pd.read_csv(os.path.join(train_path, 'model_judgement', cur_col, cur_file))
+            cur_valid_df = pd.read_csv(os.path.join(valid_path, 'model_judgement', cur_col, cur_file))
+            cur_total_df = pd.concat([cur_train_df, cur_valid_df], axis=0, ignore_index=True)
+            cur_total_df.to_csv(os.path.join(total_path, 'model_judgement', cur_col, cur_file), index=False)
+    print('Merging Finished')
+    print('-' * 30)
+
+def format_jsonlines_job():
+    print("FormatJsonlinesJob Started")
+    # get file names
+    total_model_judgement_path = os.path.join(total_path, 'model_judgement')
+    folder_names = [cur_file for cur_file in os.listdir(total_model_judgement_path) if os.path.isdir(os.path.join(total_model_judgement_path, cur_file))]
+    file_names = {}
+    for cur_folder in folder_names:
+        file_names[cur_folder] = glob.glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
+    for cur_folder in folder_names:
+        print(f'{cur_folder} started')
+        cur_model_ids = [os.path.basename(cur_path).split('.')[0] for cur_path in file_names[cur_folder]]
+        cur_dfs = []
+        print('reading dfs')
+        for cur_path in tqdm(file_names[cur_folder]):
+            cur_dfs.append(pd.read_csv(cur_path))
+        # cur_dfs = [pd.read_csv(cur_path) for cur_path in file_names[cur_folder]]
+        cur_questions_ids = cur_dfs[0]['ID'].to_list()
+        records = []
+        print('generating .jsonlines')
+        for i in tqdm(range(len(cur_model_ids))):
+            temp_records = {}
+            for cur_id in tqdm(cur_questions_ids):
+                temp_records[cur_id] = cur_dfs[i][cur_dfs[i]['ID'] == cur_id]['Judgement'].to_list()[0]
+            records.append({"subject_id": str(i), "responses": temp_records})
+        with jsonlines.open(os.path.join(total_model_judgement_path, cur_folder + '.jsonlines'), 'w') as writer:
+            writer.write_all(records)
+    # get file names
+    total_model_judgement_path = os.path.join(total_path, 'model_judgement')
+    folder_names = [cur_file for cur_file in os.listdir(total_model_judgement_path) if os.path.isdir(os.path.join(total_model_judgement_path, cur_file))]
+    file_names = {}
+    for cur_folder in folder_names:
+        file_names[cur_folder] = glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
+    def job(cur_folder):
+        print(f'{cur_folder} started')
+        cur_model_ids = [os.path.basename(cur_path).split('.')[0] for cur_path in file_names[cur_folder]]
+        cur_dfs = []
+        # print('reading dfs')
+        for cur_path in tqdm(file_names[cur_folder]):
+            cur_dfs.append(pd.read_csv(cur_path))
+        cur_questions_ids = cur_dfs[0]['ID'].to_list()
+        records = []
+        # print('generating .jsonlines')
+        for i in tqdm(range(len(cur_model_ids))):
+            temp_records = {}
+            for cur_id in tqdm(cur_questions_ids):
+                temp_records[cur_id] = cur_dfs[i][cur_dfs[i]['ID'] == cur_id]['Judgement'].to_list()[0]
+            records.append({"subject_id": str(i), "responses": temp_records})
+        with jsonlines.open(os.path.join(total_model_judgement_path, cur_folder + '.jsonlines'), 'w') as writer:
+            writer.write_all(records)
+        print(cur_folder, 'finished')
+    pool = Pool(cpu_count() - 1)
+    pool.map(job, folder_names)
+    print("Format Jasonlines Job Finished")
+    print('-' * 30)
+
+def generate_jasonlines_job():
+    print("Start generating jasonlines")
+    train_valid_ID_job()
+    merging_job()
+    format_jsonlines_job()
+    print('Jasonlines generated')
+    print('-' * 30)
+
+if __name__ == '__main__':
+    train_crowd_job()
+    evaluation_job()
+    generate_jasonlines_job()
