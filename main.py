@@ -1,5 +1,5 @@
 # main.py
-
+# TODO: set parameters
 
 # dependencies
 import os
@@ -27,9 +27,6 @@ data_path = os.path.join(cwd, 'aug_data')
 train_path = os.path.join(cwd, 'train_data')
 valid_path = os.path.join(cwd, 'valid_data')
 total_path = os.path.join(cwd, 'total_data')
-
-# TODO: download aug data
-# TODO: package
 
 
 # set up device
@@ -1052,7 +1049,7 @@ class DataSampler:
             ret_alpha.append(cur_alpha)
             ret_aug_type.append(cur_aug_type)
             # sample data
-            cur_support_data, cur_query_data_x, cur_query_data_y, cur_support_ids, cur_query_ids = loader.next_batch(alpha=cur_alpha, aug_type=cur_aug_type, return_sample_ids=True)  # FIXME: Get id from .next_batch() function
+            cur_support_data, cur_query_data_x, cur_query_data_y, cur_support_ids, cur_query_ids = loader.next_batch(alpha=cur_alpha, aug_type=cur_aug_type, return_sample_ids=True)
             cur_support_data = cur_support_data[0].numpy()
             cur_support_data = cur_support_data.reshape(1, -1, 100, 768)  # hard-coded sentence embedding shape
             cur_query_data_x = cur_query_data_x[0].numpy()
@@ -1164,7 +1161,7 @@ def train_evaluation_job():
     print('Train Evaluation Job Started')
     # set up parameters
     # sample_question_size = 35_000
-    sample_question_size = 10  # FIXME
+    sample_question_size = 20  # FIXME
     # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
     col_names = ['Country']  # FIXME
     # chunk_size = 5000
@@ -1186,7 +1183,7 @@ def train_evaluation_job():
         print(f'{cur_col} started\n')
         for j in tqdm(range(num_chunks)):
             # sample data
-            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=chunk_size)  # FIXME: call the sampler function
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=chunk_size)
             # print('Sample Finished')
             # construct the task information
             cur_query_locs = ret_query_ids
@@ -1232,7 +1229,8 @@ def train_evaluation_job():
     for cur_col in col_names:
         # combine task
         temp_list = []
-        file_chunks = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
+        file_chunks_temp = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
+        file_chunks = [os.path.basename(f) for f in file_chunks_temp]
         for cur_file in tqdm(file_chunks):
             temp_list.append(pd.read_csv(os.path.join(task_info_path, 'chuncks', cur_col, cur_file)))
         temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
@@ -1249,7 +1247,8 @@ def train_evaluation_job():
         temp_combined.to_csv(os.path.join(task_info_path, cur_col + '.csv'), index=False)
         # combine model judgement
         model_judgement_chunk_path = os.path.join(model_judgement_path, cur_col, 'chunk')
-        models_path = os.listdir(os.path.join(crowd_base_path, cur_col))
+        models_path_temp = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))
+        models_path = [os.path.basename(f) for f in models_path_temp]
         for cur_path in models_path:
             # combine
             temp_list = []
@@ -1263,15 +1262,15 @@ def train_evaluation_job():
             del temp_combined['index']
             # save
             temp_combined.to_csv(os.path.join(os.path.join(model_judgement_path, cur_col, cur_path + '.csv')), index=False)
-    print("Train Evaluation Finished")
-    print('-' * 30)
+        print("Train Evaluation Finished")
+        print('-' * 30)
 
 # valid evaluation job
 def valid_evaluation_job():
     print('Valid Evaluation Started')
     # set up parameters
     # sample_question_size = 15_000
-    sample_question_size = 10 # FIXME
+    sample_question_size = 20 # FIXME
     # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
     col_names = ['Country'] # FIXME
     # chunk_size = 5000
@@ -1294,7 +1293,7 @@ def valid_evaluation_job():
         print(f'{cur_col} started\n')
         for j in tqdm(range(num_chunks)):
             # sample data
-            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=chunk_size)  # FIXME: call the sampler function
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=chunk_size)
             # print('Sample Finished')
             # construct the task information
             cur_query_locs = ret_query_ids
@@ -1302,8 +1301,8 @@ def valid_evaluation_job():
             cur_support_neg_locs = []
             for i in range(len(ret_support_ids)):
                 loc_temp = ret_support_ids[i]
-                cur_support_pos_locs.append(loc_temp[5:])  # FIXME: Positive Label later
-                cur_support_neg_locs.append(loc_temp[:5])  # FIXME: Negative label first
+                cur_support_pos_locs.append(loc_temp[5:])  # * Positive Label later
+                cur_support_neg_locs.append(loc_temp[:5])  # * Negative label first
             ids = [str(uuid.uuid4()) for _ in range(len(cur_query_locs))]
             cur_record = {'ID': ids,
                         'Pos_support_locs': cur_support_pos_locs,
@@ -1339,7 +1338,8 @@ def valid_evaluation_job():
     for cur_col in col_names:
         # combine task
         temp_list = []
-        file_chunks = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
+        file_chunks_temp = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
+        file_chunks = [os.path.basename(f) for f in file_chunks_temp]
         for cur_file in tqdm(file_chunks):
             temp_list.append(pd.read_csv(os.path.join(task_info_path, 'chuncks', cur_col, cur_file)))
         temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
@@ -1356,7 +1356,8 @@ def valid_evaluation_job():
         temp_combined.to_csv(os.path.join(task_info_path, cur_col + '.csv'), index=False)
         # combine model judgement
         model_judgement_chunk_path = os.path.join(model_judgement_path, cur_col, 'chunk')
-        models_path = os.listdir(os.path.join(crowd_base_path, cur_col))
+        models_path_temp = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))
+        models_path = [os.path.basename(f) for f in models_path_temp]
         for cur_path in models_path:
             # combine
             temp_list = []
@@ -1441,38 +1442,28 @@ def merging_job():
     print('Merging Finished')
     print('-' * 30)
 
-def format_jsonlines_job():
-    print("FormatJsonlinesJob Started")
+def prepare_jasonlines_job():
+    print("Start generating jasonlines")
+    train_valid_ID_job()
+    merging_job()
+    # format_jsonlines_job()
+    print('Jasonlines generated')
+    print('-' * 30)
+
+if __name__ == '__main__':
+    # train_crowd_job()
+    evaluation_job()
+    prepare_jasonlines_job()
+    
+    # format to jsonlines
     # get file names
     total_model_judgement_path = os.path.join(total_path, 'model_judgement')
     folder_names = [cur_file for cur_file in os.listdir(total_model_judgement_path) if os.path.isdir(os.path.join(total_model_judgement_path, cur_file))]
+    folder_names
     file_names = {}
     for cur_folder in folder_names:
         file_names[cur_folder] = glob.glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
-    for cur_folder in folder_names:
-        print(f'{cur_folder} started')
-        cur_model_ids = [os.path.basename(cur_path).split('.')[0] for cur_path in file_names[cur_folder]]
-        cur_dfs = []
-        print('reading dfs')
-        for cur_path in tqdm(file_names[cur_folder]):
-            cur_dfs.append(pd.read_csv(cur_path))
-        # cur_dfs = [pd.read_csv(cur_path) for cur_path in file_names[cur_folder]]
-        cur_questions_ids = cur_dfs[0]['ID'].to_list()
-        records = []
-        print('generating .jsonlines')
-        for i in tqdm(range(len(cur_model_ids))):
-            temp_records = {}
-            for cur_id in tqdm(cur_questions_ids):
-                temp_records[cur_id] = cur_dfs[i][cur_dfs[i]['ID'] == cur_id]['Judgement'].to_list()[0]
-            records.append({"subject_id": str(i), "responses": temp_records})
-        with jsonlines.open(os.path.join(total_model_judgement_path, cur_folder + '.jsonlines'), 'w') as writer:
-            writer.write_all(records)
-    # get file names
-    total_model_judgement_path = os.path.join(total_path, 'model_judgement')
-    folder_names = [cur_file for cur_file in os.listdir(total_model_judgement_path) if os.path.isdir(os.path.join(total_model_judgement_path, cur_file))]
-    file_names = {}
-    for cur_folder in folder_names:
-        file_names[cur_folder] = glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
+    folder_names = ['Country']  # FIXME
     def job(cur_folder):
         print(f'{cur_folder} started')
         cur_model_ids = [os.path.basename(cur_path).split('.')[0] for cur_path in file_names[cur_folder]]
@@ -1495,16 +1486,3 @@ def format_jsonlines_job():
     pool.map(job, folder_names)
     print("Format Jasonlines Job Finished")
     print('-' * 30)
-
-def generate_jasonlines_job():
-    print("Start generating jasonlines")
-    train_valid_ID_job()
-    merging_job()
-    format_jsonlines_job()
-    print('Jasonlines generated')
-    print('-' * 30)
-
-if __name__ == '__main__':
-    # train_crowd_job()
-    evaluation_job()
-    generate_jasonlines_job()
