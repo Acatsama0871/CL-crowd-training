@@ -1261,8 +1261,8 @@ def train_evaluation_job():
             del temp_combined['index']
             # save
             temp_combined.to_csv(os.path.join(os.path.join(model_judgement_path, cur_col, cur_path + '.csv')), index=False)
-        print("Train Evaluation Finished")
-        print('-' * 30)
+    print("Train Evaluation Finished")
+    print('-' * 30)
 
 # valid evaluation job
 def valid_evaluation_job():
