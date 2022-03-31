@@ -195,7 +195,7 @@ class CL_Data_loader():
                     f_set = np.array([np.array(feature[b]) for b in x_set_batch])
                     f_hat = np.array(feature[x_hat_batch])
                 else:
-                    feature = self.aug_data[alpha - 1][aug_type - 1]
+                    feature = self.aug_data[0][alpha - 1][aug_type - 1]
                     f_set = np.array([np.array(feature[b]) for b in x_set_batch])
                     f_hat = np.array(feature[x_hat_batch])
 
@@ -1470,6 +1470,6 @@ def generate_jasonlines_job():
     print('-' * 30)
 
 if __name__ == '__main__':
-    train_crowd_job()
+    # train_crowd_job()
     evaluation_job()
     generate_jasonlines_job()
