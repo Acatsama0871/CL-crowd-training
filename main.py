@@ -21,6 +21,35 @@ from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
 
+# parameters
+# crowd training
+col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
+class_nemes = col_names
+batch_size = 32
+k_shot = 5
+training_eposides = 10
+validation_eposides = 10
+learning_rate = 0.0001
+n_epochs = 10
+# filters = list(np.arange(5, 40, 5))
+# corruption_ratios = list(np.arange(0.05, 0.6, 0.05))
+filters = list(np.arange(5, 40, 30))  # FIXME
+corruption_ratios = list(np.arange(0.05, 0.6, 0.6))  # FIXME
+# train evaluation
+# sample_question_size = 35_000
+train_sample_question_size = 20  # FIXME
+# chunk_size = 5000
+train_chunk_size = 10  # FIXME
+train_num_chunks = ceil(train_sample_question_size / train_chunk_size)
+# valid evaluation
+# set up parameters
+# sample_question_size = 15_000
+valid_sample_question_size = 20 # FIXME
+# chunk_size = 5000
+valid_chunk_size = 10  # FIXME
+valid_num_chunks = ceil(valid_sample_question_size / valid_chunk_size)
+
+
 # set up path
 cwd = os.getcwd()
 data_path = os.path.join(cwd, 'aug_data')
@@ -938,20 +967,6 @@ def train_crowd(data,
 def train_crowd_job():
     # verbosity
     print('Crowd Training Started')
-    # parameters setting
-    # class_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-    class_names = ['Country']  # FIXME
-    batch_size = 32
-    k_shot = 5
-    training_eposides = 10
-    validation_eposides = 10
-    learning_rate = 0.0001
-    n_epochs = 10
-    # filters = list(np.arange(5, 40, 5))
-    # corruption_ratios = list(np.arange(0.05, 0.6, 0.05))
-    filters = list(np.arange(5, 40, 30))  # FIXME
-    corruption_ratios = list(np.arange(0.05, 0.6, 0.6))  # FIXME
-
 
     for class_name in class_names:
         print(f'Class: {class_name} started')
@@ -1159,14 +1174,6 @@ def given_data_evaluation(cur_support_data, cur_query_data_x, cur_query_data_y, 
 # train evaluation job
 def train_evaluation_job():
     print('Train Evaluation Job Started')
-    # set up parameters
-    # sample_question_size = 35_000
-    sample_question_size = 20  # FIXME
-    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-    col_names = ['Country']  # FIXME
-    # chunk_size = 5000
-    chunk_size = 10  # FIXME
-    num_chunks = ceil(sample_question_size / chunk_size)
     # set up path
     crowd_base_path = os.path.join(cwd, 'crowd')
     task_info_path = os.path.join(cwd, 'train_data', 'task')
@@ -1181,7 +1188,7 @@ def train_evaluation_job():
     # chunk evaluation
     for cur_col in col_names:
         print(f'{cur_col} started\n')
-        for j in tqdm(range(num_chunks)):
+        for j in tqdm(range(train_num_chunks)):
             # sample data
             cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=chunk_size)
             # print('Sample Finished')
@@ -1268,14 +1275,6 @@ def train_evaluation_job():
 # valid evaluation job
 def valid_evaluation_job():
     print('Valid Evaluation Started')
-    # set up parameters
-    # sample_question_size = 15_000
-    sample_question_size = 20 # FIXME
-    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-    col_names = ['Country'] # FIXME
-    # chunk_size = 5000
-    chunk_size = 10  # FIXME
-    num_chunks = ceil(sample_question_size / chunk_size)
     # set up path
     crowd_base_path = os.path.join(cwd, 'crowd')
     task_info_path = os.path.join(cwd, 'valid_data', 'task')
@@ -1291,7 +1290,7 @@ def valid_evaluation_job():
     # evaluation
     for cur_col in col_names:
         print(f'{cur_col} started\n')
-        for j in tqdm(range(num_chunks)):
+        for j in tqdm(range(valid_num_chunks)):
             # sample data
             cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=chunk_size)
             # print('Sample Finished')
@@ -1314,9 +1313,9 @@ def valid_evaluation_job():
             pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
 
             # models path
-            models_path_long = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))  # FIXME
+            models_path_long = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))
             models_path = [os.path.basename(f) for f in models_path_long]
-            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.csv')))  # FIXME
+            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.csv')))
             model_info_csv = model_info_csv[0]
             model_info_csv = pd.read_csv(model_info_csv, index_col=0)
             filters_dict = {}
@@ -1388,8 +1387,6 @@ def evaluation_job():
 def train_valid_ID_job():
     print('Train Valid ID Job Started')
     # save train & valid task id
-    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-    col_names = ['Country']  # FIXME
     # train
     train_task_id = {}
     for cur_col in col_names:
@@ -1463,7 +1460,6 @@ if __name__ == '__main__':
     file_names = {}
     for cur_folder in folder_names:
         file_names[cur_folder] = glob.glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
-    folder_names = ['Country']  # FIXME
     def job(cur_folder):
         print(f'{cur_folder} started')
         cur_model_ids = [os.path.basename(cur_path).split('.')[0] for cur_path in file_names[cur_folder]]
