@@ -1207,9 +1207,9 @@ def train_evaluation_job():
             pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
 
             # models path
-            models_path_long = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.pth')))
+            models_path_long = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))
             models_path = [os.path.basename(f) for f in models_path_long]
-            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.csv')))
+            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.csv')))
             model_info_csv = model_info_csv[0]
             model_info_csv = pd.read_csv(model_info_csv, index_col=0)
             filters_dict = {}
@@ -1232,7 +1232,7 @@ def train_evaluation_job():
     for cur_col in col_names:
         # combine task
         temp_list = []
-        file_chunks = os.listdir(os.path.join(task_info_path, 'chuncks', cur_col))
+        file_chunks = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
         for cur_file in tqdm(file_chunks):
             temp_list.append(pd.read_csv(os.path.join(task_info_path, 'chuncks', cur_col, cur_file)))
         temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
@@ -1315,9 +1315,9 @@ def valid_evaluation_job():
             pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
 
             # models path
-            models_path_long = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.pth')))
+            models_path_long = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.pth')))  # FIXME
             models_path = [os.path.basename(f) for f in models_path_long]
-            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, 'Country', '*.csv')))
+            model_info_csv = list(glob.glob(os.path.join(crowd_base_path, cur_col, '*.csv')))  # FIXME
             model_info_csv = model_info_csv[0]
             model_info_csv = pd.read_csv(model_info_csv, index_col=0)
             filters_dict = {}
@@ -1335,6 +1335,41 @@ def valid_evaluation_job():
                 if not os.path.isdir(os.path.join(model_judgement_path, cur_col)):
                     os.mkdir(os.path.join(model_judgement_path, cur_col))
                 pd.DataFrame({'ID': ids, 'Judgement': judgement}).to_csv(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + f'_c_{j}' + '.csv'), index=False)
+    # combine chunk
+    for cur_col in col_names:
+        # combine task
+        temp_list = []
+        file_chunks = list(glob.glob(os.path.join(task_info_path, 'chuncks', cur_col, '*.csv')))
+        for cur_file in tqdm(file_chunks):
+            temp_list.append(pd.read_csv(os.path.join(task_info_path, 'chuncks', cur_col, cur_file)))
+        temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
+        temp_combined = temp_combined.sort_values(by='ID').reset_index()
+        del temp_combined['index']
+        # check duplicates
+        duplicates_check_df = temp_combined.loc[:, temp_combined.columns != 'ID'].copy()
+        duplicates_boolean = duplicates_check_df.duplicated(subset=None, keep='first').tolist()
+        print(f'Class :{cur_col}, num of duplicates: {np.sum(duplicates_boolean)}')
+        duplicates_boolean = [not item for item in duplicates_boolean]  # flip the boolean to index dataframe
+        # remove duplicates from combined and save
+        temp_combined = temp_combined[duplicates_boolean].reset_index()
+        del temp_combined['index']
+        temp_combined.to_csv(os.path.join(task_info_path, cur_col + '.csv'), index=False)
+        # combine model judgement
+        model_judgement_chunk_path = os.path.join(model_judgement_path, cur_col, 'chunk')
+        models_path = os.listdir(os.path.join(crowd_base_path, cur_col))
+        for cur_path in models_path:
+            # combine
+            temp_list = []
+            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_?.csv')):
+                temp_list.append(pd.read_csv(cur_file))
+            temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
+            temp_combined = temp_combined.sort_values(by='ID').reset_index()
+            del temp_combined['index']
+            # remove duplicated lines
+            temp_combined = temp_combined[duplicates_boolean].reset_index()
+            del temp_combined['index']
+            # save
+            temp_combined.to_csv(os.path.join(os.path.join(model_judgement_path, cur_col, cur_path + '.csv')), index=False)
     print('Valid Evaluation Finished')
     print('-' * 30)
 
