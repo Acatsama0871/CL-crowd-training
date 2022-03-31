@@ -30,22 +30,15 @@ training_eposides = 10
 validation_eposides = 10
 learning_rate = 0.0001
 n_epochs = 10
-# filters = list(np.arange(5, 40, 5))
-# corruption_ratios = list(np.arange(0.05, 0.6, 0.05))
-filters = list(np.arange(5, 40, 30))  # FIXME
-corruption_ratios = list(np.arange(0.05, 0.6, 0.6))  # FIXME
+filters = list(np.arange(5, 40, 5))
+corruption_ratios = list(np.arange(0.05, 0.6, 0.05))
 # train evaluation
-# sample_question_size = 35_000
-train_sample_question_size = 20  # FIXME
-# chunk_size = 5000
-train_chunk_size = 10  # FIXME
+train_sample_question_size = 35_000
+train_chunk_size = 5000
 train_num_chunks = ceil(train_sample_question_size / train_chunk_size)
 # valid evaluation
-# set up parameters
-# sample_question_size = 15_000
-valid_sample_question_size = 20 # FIXME
-# chunk_size = 5000
-valid_chunk_size = 10  # FIXME
+valid_sample_question_size = 15_000
+valid_chunk_size = 5000
 valid_num_chunks = ceil(valid_sample_question_size / valid_chunk_size)
 
 
@@ -1415,8 +1408,6 @@ def train_valid_ID_job():
 def merging_job():
     print('Merging Started')
     # merge task
-    # col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-    col_names = ['Country']  # FIXME
     for cur_col in col_names:
         train_task_df = pd.read_csv(os.path.join(train_path, 'task', cur_col + '.csv'))
         train_task_df['Train'] = True
@@ -1468,7 +1459,6 @@ if __name__ == '__main__':
             cur_dfs.append(pd.read_csv(cur_path))
         cur_questions_ids = cur_dfs[0]['ID'].to_list()
         records = []
-        # print('generating .jsonlines')
         for i in tqdm(range(len(cur_model_ids))):
             temp_records = {}
             for cur_id in tqdm(cur_questions_ids):
