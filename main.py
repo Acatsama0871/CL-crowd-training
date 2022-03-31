@@ -30,8 +30,8 @@ training_eposides = 10
 validation_eposides = 10
 learning_rate = 0.0001
 n_epochs = 10
-filters = list(np.arange(5, 40, 5))
-corruption_ratios = list(np.arange(0.05, 0.6, 0.05))
+filters = list(np.arange(5, 50, 5))
+corruption_ratios = list(np.arange(0.05, 0.65, 0.05))
 # train evaluation
 train_sample_question_size = 35_000
 train_chunk_size = 5000
