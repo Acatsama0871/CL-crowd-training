@@ -995,8 +995,8 @@ def train_crowd_job():
                     validation_eposides=validation_eposides,
                     learning_rate=learning_rate,
                     n_epochs=n_epochs)
-        print('Crowd Training Finished')
-        print('-' * 30)
+    print('Crowd Training Finished')
+    print('-' * 30)
 
 
 # Evaluation functions
