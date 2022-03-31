@@ -1,5 +1,4 @@
 # main.py
-# TODO: set parameters
 
 # dependencies
 import os
@@ -1190,7 +1189,7 @@ def train_evaluation_job():
         print(f'{cur_col} started\n')
         for j in tqdm(range(train_num_chunks)):
             # sample data
-            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=chunk_size)
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=train_chunk_size)
             # print('Sample Finished')
             # construct the task information
             cur_query_locs = ret_query_ids
@@ -1292,7 +1291,7 @@ def valid_evaluation_job():
         print(f'{cur_col} started\n')
         for j in tqdm(range(valid_num_chunks)):
             # sample data
-            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=chunk_size)
+            cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch_valid(col_name=cur_col, sample_size=valid_chunk_size)
             # print('Sample Finished')
             # construct the task information
             cur_query_locs = ret_query_ids
@@ -1448,7 +1447,7 @@ def prepare_jasonlines_job():
     print('-' * 30)
 
 if __name__ == '__main__':
-    # train_crowd_job()
+    train_crowd_job()
     evaluation_job()
     prepare_jasonlines_job()
     
