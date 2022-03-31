@@ -23,7 +23,7 @@ from multiprocessing import Pool, cpu_count
 # parameters
 # crowd training
 col_names = ['Study Period', 'Perspective', 'Population', 'Sample Size', 'Intervention', 'Country']
-class_nemes = col_names
+class_names = col_names
 batch_size = 32
 k_shot = 5
 training_eposides = 10
