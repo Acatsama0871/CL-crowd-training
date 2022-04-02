@@ -1251,7 +1251,7 @@ def train_evaluation_job():
         for cur_path in models_path:
             # combine
             temp_list = []
-            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_?.csv')):
+            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_*.csv')):
                 temp_list.append(pd.read_csv(cur_file))
             temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
             temp_combined = temp_combined.sort_values(by='ID').reset_index()
@@ -1352,7 +1352,7 @@ def valid_evaluation_job():
         for cur_path in models_path:
             # combine
             temp_list = []
-            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_?.csv')):
+            for cur_file in glob.glob(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + '_c_*.csv')):
                 temp_list.append(pd.read_csv(cur_file))
             temp_combined = pd.concat(temp_list, axis=0, ignore_index=True)
             temp_combined = temp_combined.sort_values(by='ID').reset_index()
