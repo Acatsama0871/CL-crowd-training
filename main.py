@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import jsonlines
+from ast import literal_eval
 from math import ceil
 from torch.autograd import Variable
 from torch.autograd import Variable
@@ -34,11 +35,11 @@ filters = list(np.arange(5, 50, 5))
 corruption_ratios = list(np.arange(0.05, 0.65, 0.05))
 # train evaluation
 train_sample_question_size = 35_000
-train_chunk_size = 5000
+train_chunk_size = 2500
 train_num_chunks = ceil(train_sample_question_size / train_chunk_size)
 # valid evaluation
 valid_sample_question_size = 15_000
-valid_chunk_size = 5000
+valid_chunk_size = 2500
 valid_num_chunks = ceil(valid_sample_question_size / valid_chunk_size)
 
 
@@ -483,7 +484,7 @@ def data_converter(support_data, query_data_x, query_data_y, n_shot, predict_mod
     # query data
     x_query = torch.Tensor(query_data_x.reshape(2, -1, *query_data_x.shape[1:]))
 
-    # y_query
+    # y_querycpu
     if predict_mode is False:
         y_query = Variable(torch.LongTensor(query_data_y).view(2, -1, 1), requires_grad=False)
     else:
@@ -1161,6 +1162,11 @@ def given_data_evaluation(cur_support_data, cur_query_data_x, cur_query_data_y, 
 
     return np.concatenate(judgemet)
 
+def sort_pos_neg(list_string):
+    the_list = literal_eval(list_string)
+    the_list.sort()
+    return str(the_list)
+
 
 # Evaluation jobs
 # train evaluation job
@@ -1183,7 +1189,6 @@ def train_evaluation_job():
         for j in tqdm(range(train_num_chunks)):
             # sample data
             cur_support_data, cur_query_data_x, cur_query_data_y, ret_alpha, ret_aug_type, ret_support_ids, ret_query_ids = mySampler.sample_one_batch(col_name=cur_col, sample_size=train_chunk_size)
-            # print('Sample Finished')
             # construct the task information
             cur_query_locs = ret_query_ids
             cur_support_pos_locs = []
@@ -1237,6 +1242,8 @@ def train_evaluation_job():
         del temp_combined['index']
         # check duplicates
         duplicates_check_df = temp_combined.loc[:, temp_combined.columns != 'ID'].copy()
+        duplicates_check_df['Pos_support_locs'] = duplicates_check_df['Pos_support_locs'].apply(sort_pos_neg)
+        duplicates_check_df['Neg_support_locs'] = duplicates_check_df['Neg_support_locs'].apply(sort_pos_neg)
         duplicates_boolean = duplicates_check_df.duplicated(subset=None, keep='first').tolist()
         print(f'Class :{cur_col}, num of duplicates: {np.sum(duplicates_boolean)}')
         duplicates_boolean = [not item for item in duplicates_boolean]  # flip the boolean to index dataframe
@@ -1338,6 +1345,8 @@ def valid_evaluation_job():
         del temp_combined['index']
         # check duplicates
         duplicates_check_df = temp_combined.loc[:, temp_combined.columns != 'ID'].copy()
+        duplicates_check_df['Pos_support_locs'] = duplicates_check_df['Pos_support_locs'].apply(sort_pos_neg)
+        duplicates_check_df['Neg_support_locs'] = duplicates_check_df['Neg_support_locs'].apply(sort_pos_neg)
         duplicates_boolean = duplicates_check_df.duplicated(subset=None, keep='first').tolist()
         print(f'Class :{cur_col}, num of duplicates: {np.sum(duplicates_boolean)}')
         duplicates_boolean = [not item for item in duplicates_boolean]  # flip the boolean to index dataframe
@@ -1438,7 +1447,7 @@ def prepare_jasonlines_job():
     print('-' * 30)
 
 if __name__ == '__main__':
-    train_crowd_job()
+    # train_crowd_job()
     evaluation_job()
     prepare_jasonlines_job()
     
@@ -1467,7 +1476,8 @@ if __name__ == '__main__':
         with jsonlines.open(os.path.join(total_model_judgement_path, cur_folder + '.jsonlines'), 'w') as writer:
             writer.write_all(records)
         print(cur_folder, 'finished')
-    pool = Pool(cpu_count() - 1)
+    # pool = Pool(cpu_count() - 1)
+    pool = Pool(10)
     pool.map(job, folder_names)
     print("Format Jasonlines Job Finished")
     print('-' * 30)
