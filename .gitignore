@@ -125,6 +125,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# vscode
+.vscode/
+
 # Pyre type checker
 .pyre/
 
@@ -136,3 +139,4 @@ dmypy.json
 /valid_data
 /aug_data.zip
 /crowd
+/train_only_data

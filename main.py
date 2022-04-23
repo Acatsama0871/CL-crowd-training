@@ -1447,7 +1447,7 @@ def prepare_jasonlines_job():
     print('-' * 30)
 
 if __name__ == '__main__':
-    # train_crowd_job()
+    train_crowd_job()
     evaluation_job()
     prepare_jasonlines_job()
     
@@ -1455,7 +1455,6 @@ if __name__ == '__main__':
     # get file names
     total_model_judgement_path = os.path.join(total_path, 'model_judgement')
     folder_names = [cur_file for cur_file in os.listdir(total_model_judgement_path) if os.path.isdir(os.path.join(total_model_judgement_path, cur_file))]
-    folder_names
     file_names = {}
     for cur_folder in folder_names:
         file_names[cur_folder] = glob.glob(os.path.join(total_model_judgement_path, cur_folder, '*.csv'))
