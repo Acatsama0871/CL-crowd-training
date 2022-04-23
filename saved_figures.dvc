@@ -1,0 +1,5 @@
+outs:
+- md5: 0bc3cc798131801268102bbf100df374.dir
+  size: 454582
+  nfiles: 6
+  path: saved_figures

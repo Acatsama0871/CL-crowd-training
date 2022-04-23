@@ -129,3 +129,10 @@ dmypy.json
 .pyre/
 
 .DS_Store
+/aug_data
+/saved_figures
+/total_data
+/train_data
+/valid_data
+/aug_data.zip
+/crowd

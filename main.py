@@ -99,7 +99,7 @@ class CL_Data_loader():
 
         self.batch_size = batch_size
 
-        self.k_shot = k_shot # 1 or 5, how many times the model sees the example
+        self.k_shot = k_shot  # 1 or 5, how many times the model sees the example
 
         self.num_classes = 2   # this is a binary classification
 
@@ -1177,11 +1177,11 @@ def train_evaluation_job():
     task_info_path = os.path.join(cwd, 'train_data', 'task')
     model_judgement_path = os.path.join(cwd, 'train_data', 'model_judgement')
     # initialize
-    mySampler = DataSampler(embedding_data=token_embeddings, 
+    mySampler = DataSampler(embedding_data=token_embeddings,
                             aug_data=aug_token_embeddings,
-                            X_train_pos=train_pos_positions, 
-                            X_train_neg=train_neg_positions, 
-                            X_val_pos=valid_pos_positions, 
+                            X_train_pos=train_pos_positions,
+                            X_train_neg=train_neg_positions,
+                            X_val_pos=valid_pos_positions,
                             X_val_neg=valid_neg_positions)
     # chunk evaluation
     for cur_col in col_names:
@@ -1199,12 +1199,12 @@ def train_evaluation_job():
                 cur_support_neg_locs.append(loc_temp[:5])
             ids = [str(uuid.uuid4()) for _ in range(len(cur_query_locs))]
             cur_record = {'ID': ids,
-                        'Pos_support_locs': cur_support_pos_locs,
-                        'Neg_support_locs': cur_support_neg_locs,
-                        'Query_loc': cur_query_locs,
-                        'Label': cur_query_data_y,
-                        'Alpha': ret_alpha,
-                        'Aug_type': ret_aug_type}
+                          'Pos_support_locs': cur_support_pos_locs,
+                          'Neg_support_locs': cur_support_neg_locs,
+                          'Query_loc': cur_query_locs,
+                          'Label': cur_query_data_y,
+                          'Alpha': ret_alpha,
+                          'Aug_type': ret_aug_type}
             pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
 
             # models path
@@ -1228,7 +1228,7 @@ def train_evaluation_job():
                 if not os.path.isdir(os.path.join(model_judgement_path, cur_col)):
                     os.mkdir(os.path.join(model_judgement_path, cur_col))
                 pd.DataFrame({'ID': ids, 'Judgement': judgement}).to_csv(os.path.join(model_judgement_path, cur_col, 'chunk', cur_path + f'_c_{j}' + '.csv'), index=False)
-    
+
     # merge chunk
     for cur_col in col_names:
         # combine task
@@ -1303,12 +1303,12 @@ def valid_evaluation_job():
                 cur_support_neg_locs.append(loc_temp[:5])  # * Negative label first
             ids = [str(uuid.uuid4()) for _ in range(len(cur_query_locs))]
             cur_record = {'ID': ids,
-                        'Pos_support_locs': cur_support_pos_locs,
-                        'Neg_support_locs': cur_support_neg_locs,
-                        'Query_loc': cur_query_locs,
-                        'Label': cur_query_data_y,
-                        'Alpha': ret_alpha,
-                        'Aug_type': ret_aug_type}
+                          'Pos_support_locs': cur_support_pos_locs,
+                          'Neg_support_locs': cur_support_neg_locs,
+                          'Query_loc': cur_query_locs,
+                          'Label': cur_query_data_y,
+                          'Alpha': ret_alpha,
+                          'Aug_type': ret_aug_type}
             pd.DataFrame(cur_record).to_csv(os.path.join(task_info_path, 'chuncks', cur_col, f'c_{j}' +'.csv'), index=False)
 
             # models path

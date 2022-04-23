@@ -1,0 +1,5 @@
+outs:
+- md5: e61e05eb39e7d96c9842cdbf1f30dd69.dir
+  size: 8313401213
+  nfiles: 7
+  path: aug_data
