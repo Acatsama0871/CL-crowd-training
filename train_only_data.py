@@ -32,7 +32,7 @@ if __name__ == "__main__":
             writer.write_all(records)
         print(cur_folder, 'finished')
     # run with multi-processing
-    pool = Pool(6)
+    pool = Pool(10)
     pool.map(job, folder_names)
     print("Format Jasonlines Job Finished")
     print('-' * 30)
